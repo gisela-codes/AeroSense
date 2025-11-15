@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>BLE</title>
+    <style>
+        body {
+            font-family: sans-serif;
+        }
+
+        .line {
+            fill: none;
+            stroke: steelblue;
+            stroke-width: 2px;
+        }
+
+        .axis path,
+        .axis line {
+            fill: none;
+            stroke: #000;
+            shape-rendering: crispEdges;
+        }
+
+        .chart-title {
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+    </style>
+  </head>
+  <body>
+    <div id="container">
+        <div>
+                <p>
+                    <button id="connect">Connect</button>
+                </p>
+        </div>  
+        <div id="chart"></div>  
+    </div>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="ble.js"></script>
+  </body>
+</html>
