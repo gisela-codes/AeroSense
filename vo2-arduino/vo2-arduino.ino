@@ -1,3 +1,5 @@
+#include <Adafruit_MPU6050.h>
+
 #include <Wire.h>
 #include "DFRobot_OxygenSensor.h"
 #include <BLEDevice.h>
@@ -39,7 +41,6 @@ void setup() {
   Serial.begin(115200);        
   delay(100); 
   Serial.println("Starting BLE!");
-  Wire.begin(8, 9); // SDA=8, SCL=9
   delay(500);
 
   Serial.println("Initializing Oxygen Sensor...");
@@ -82,5 +83,6 @@ void loop() {
   Serial.print(o2);
   Serial.println(" %");
   delay(1000);
+  
 
 }
