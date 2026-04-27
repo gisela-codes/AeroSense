@@ -8,6 +8,7 @@ import {
   BLEDevice,
   BLEScanState,
   BluetoothPermissionState,
+  SensorPacket,
 } from "@/types/ble";
 import React, {
   createContext,
@@ -38,7 +39,7 @@ interface BLEContextType {
   connect: (deviceId: string) => Promise<void>;
   disconnect: () => Promise<void>;
 
-  receivedData: string[];
+  receivedData: SensorPacket[];
   clearData: () => void;
 
   error: string | null;
@@ -74,6 +75,7 @@ export const BLEProvider: React.FC<{ children: React.ReactNode }> = ({
   }, []);
   const subscriptionsRef = useRef<EventSubscription[]>([]);
   const bleStartedRef = useRef(false);
+  const connectedDeviceIdRef = useRef<string | null>(null);
   const scanTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const [scanState, setScanState] = useState<BLEScanState>("idle");
@@ -83,7 +85,7 @@ export const BLEProvider: React.FC<{ children: React.ReactNode }> = ({
   const [connectedDevice, setConnectedDevice] = useState<BLEDevice | null>(
     null,
   );
-  const [receivedData, setReceivedData] = useState<string[]>([]);
+  const [receivedData, setReceivedData] = useState<SensorPacket[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [permissionState, setPermissionState] =
     useState<BluetoothPermissionState>("unknown");
@@ -97,12 +99,23 @@ export const BLEProvider: React.FC<{ children: React.ReactNode }> = ({
     setReceivedData([]);
   }, []);
 
-  const bytesToString = (bytes: number[]): string => {
-    try {
-      return String.fromCharCode(...bytes);
-    } catch {
-      return Buffer.from(bytes).toString("utf-8");
+  const parseSensorPacket = (bytes: number[]): SensorPacket | undefined => {
+    const expectedLength = 16;
+    if (bytes.length < expectedLength) {
+      return undefined;
     }
+
+    const dataView = new DataView(Uint8Array.from(bytes).buffer);
+    return {
+      seq: dataView.getUint16(0, true),
+      air: dataView.getInt16(2, true),
+      ax: dataView.getInt16(4, true) / 2048,
+      ay: dataView.getInt16(6, true) / 2048,
+      az: dataView.getInt16(8, true) / 2048,
+      gx: dataView.getInt16(10, true) / 131,
+      gy: dataView.getInt16(12, true) / 131,
+      gz: dataView.getInt16(14, true) / 131,
+    };
   };
 
   const ensureBleAvailable = useCallback(() => {
@@ -269,19 +282,25 @@ export const BLEProvider: React.FC<{ children: React.ReactNode }> = ({
 
     subscriptionsRef.current = [
       BleManager.onDiscoverPeripheral((peripheral) => {
+        const peripheralName =
+          peripheral.name?.trim() || peripheral.advertising?.localName?.trim();
+
+        if (!peripheralName) {
+          return;
+        }
+
         setDevices((prev) => {
           const nextDevice: BLEDevice = {
             id: peripheral.id,
-            name:
-              peripheral.name ||
-              peripheral.advertising?.localName ||
-              "Unknown Device",
+            name: peripheralName,
             peripheralID: peripheral.id,
             rssi: peripheral.rssi ?? 0,
             lastSeen: Date.now(),
-            isConnected: connectedDevice?.id === peripheral.id,
+            isConnected: connectedDeviceIdRef.current === peripheral.id,
           };
-          const existingIndex = prev.findIndex((item) => item.id === peripheral.id);
+          const existingIndex = prev.findIndex(
+            (item) => item.id === peripheral.id,
+          );
 
           if (existingIndex === -1) {
             return [...prev, nextDevice];
@@ -310,14 +329,20 @@ export const BLEProvider: React.FC<{ children: React.ReactNode }> = ({
             item.id === peripheral ? { ...item, isConnected: false } : item,
           ),
         );
+        connectedDeviceIdRef.current = null;
         setConnectionState("disconnected");
         setConnectedDevice(null);
         notificationService.notify("Bluetooth", "Device disconnected.", "info");
       }),
       BleManager.onDidUpdateValueForCharacteristic((event) => {
-        if (event.peripheral === connectedDevice?.id) {
-          const message = bytesToString(event.value || []);
-          setReceivedData((prev) => [message, ...prev].slice(0, 50));
+        if (event.peripheral === connectedDeviceIdRef.current) {
+          const bytes = event.value || [];
+          const packet = parseSensorPacket(bytes);
+          if (!packet) {
+            return;
+          }
+
+          setReceivedData((prev) => [packet, ...prev].slice(0, 50));
         }
       }),
       BleManager.onPeripheralDidBond((peripheral) => {
@@ -339,7 +364,7 @@ export const BLEProvider: React.FC<{ children: React.ReactNode }> = ({
         scanTimeoutRef.current = null;
       }
     };
-  }, [bleAvailable, connectedDevice?.id]);
+  }, [bleAvailable]);
 
   const startScan = useCallback(async () => {
     const ready = await prepareBluetooth();
@@ -435,26 +460,30 @@ export const BLEProvider: React.FC<{ children: React.ReactNode }> = ({
               uuid: service.uuid,
               isPrimary: true,
             })) || [],
-          characteristics: peripheralData.characteristics?.map(
-            (characteristic: {
-              characteristic: string;
-              service: string;
-              properties?: Record<string, string>;
-            }) => ({
-              uuid: characteristic.characteristic,
-              serviceUUID: characteristic.service,
-              properties: {
-                Read: Boolean(characteristic.properties?.Read),
-                Write: Boolean(characteristic.properties?.Write),
-                WriteWithoutResponse:
-                  Boolean(characteristic.properties?.WriteWithoutResponse),
-                Notify: Boolean(characteristic.properties?.Notify),
-                Indicate: Boolean(characteristic.properties?.Indicate),
-                Broadcast: Boolean(characteristic.properties?.Broadcast),
-              },
-            }),
-          ) || [],
+          characteristics:
+            peripheralData.characteristics?.map(
+              (characteristic: {
+                characteristic: string;
+                service: string;
+                properties?: Record<string, string>;
+              }) => ({
+                uuid: characteristic.characteristic,
+                serviceUUID: characteristic.service,
+                properties: {
+                  Read: Boolean(characteristic.properties?.Read),
+                  Write: Boolean(characteristic.properties?.Write),
+                  WriteWithoutResponse: Boolean(
+                    characteristic.properties?.WriteWithoutResponse,
+                  ),
+                  Notify: Boolean(characteristic.properties?.Notify),
+                  Indicate: Boolean(characteristic.properties?.Indicate),
+                  Broadcast: Boolean(characteristic.properties?.Broadcast),
+                },
+              }),
+            ) || [],
         };
+
+        connectedDeviceIdRef.current = deviceId;
 
         setDevices((prev) =>
           prev.map((item) =>
@@ -463,6 +492,18 @@ export const BLEProvider: React.FC<{ children: React.ReactNode }> = ({
               : { ...item, isConnected: false },
           ),
         );
+        // Enable notifications for every notifiable characteristic so that
+        // onDidUpdateValueForCharacteristic fires when the firmware calls notify().
+        const notifiableChars =
+          device.characteristics?.filter(
+            (c) => c.properties.Notify || c.properties.Indicate,
+          ) ?? [];
+        await Promise.allSettled(
+          notifiableChars.map((c) =>
+            BleManager.startNotification(deviceId, c.serviceUUID, c.uuid),
+          ),
+        );
+
         setConnectedDevice(device);
         setConnectionState("connected");
         notificationService.notify(
@@ -490,9 +531,12 @@ export const BLEProvider: React.FC<{ children: React.ReactNode }> = ({
 
     try {
       await BleManager.disconnect(connectedDevice.id);
+      connectedDeviceIdRef.current = null;
       setDevices((prev) =>
         prev.map((item) =>
-          item.id === connectedDevice.id ? { ...item, isConnected: false } : item,
+          item.id === connectedDevice.id
+            ? { ...item, isConnected: false }
+            : item,
         ),
       );
       setConnectionState("disconnected");

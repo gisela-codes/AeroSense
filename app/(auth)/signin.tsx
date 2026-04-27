@@ -1,6 +1,7 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useState } from "react";
 import {
+  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,10 +12,76 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Fonts } from "@/constants/theme";
+import { useAuth } from "@/context/AuthContext";
 
 export default function SignInScreen() {
+  const { continueWithoutAccount, signIn, signUp } = useAuth();
   const [showPin, setShowPin] = useState(false);
   const [persistSession, setPersistSession] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [infoMessage, setInfoMessage] = useState<string | null>(null);
+
+  const clearMessages = () => {
+    if (errorMessage) {
+      setErrorMessage(null);
+    }
+
+    if (infoMessage) {
+      setInfoMessage(null);
+    }
+  };
+
+  const handleSignIn = async () => {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!normalizedEmail || !password) {
+      setErrorMessage("Enter your email and password to continue.");
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      setErrorMessage(null);
+      setInfoMessage(null);
+      await signIn(normalizedEmail, password);
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Unable to sign in right now.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSignUp = async () => {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!normalizedEmail || !password) {
+      setErrorMessage("Enter your email and password to create an account.");
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      setErrorMessage(null);
+      setInfoMessage(null);
+      await signUp(normalizedEmail, password);
+      setInfoMessage(
+        "Account created. If your project requires email confirmation, check your inbox before signing in.",
+      );
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to create an account right now.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -30,13 +97,13 @@ export default function SignInScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.hero}>
-          <View style={styles.logoTile}>
+          {/* <View style={styles.logoTile}>
             <MaterialCommunityIcons
               color="#A9F6D5"
               name="medical-bag"
               size={44}
             />
-          </View>
+          </View> */}
 
           <Text style={styles.heroTitle}>SIGN IN</Text>
           <Text style={styles.heroSubtitle}>AeroSense</Text>
@@ -55,9 +122,15 @@ export default function SignInScreen() {
               <TextInput
                 autoCapitalize="none"
                 autoCorrect={false}
+                keyboardType="email-address"
+                onChangeText={(value) => {
+                  setEmail(value);
+                  clearMessages();
+                }}
                 placeholder="name@utahtech.edu"
                 placeholderTextColor="#576580"
                 style={styles.input}
+                value={email}
               />
             </View>
           </View>
@@ -72,12 +145,20 @@ export default function SignInScreen() {
                 style={styles.leadingIcon}
               />
               <TextInput
+                autoCapitalize="none"
+                autoCorrect={false}
+                onChangeText={(value) => {
+                  setPassword(value);
+                  clearMessages();
+                }}
                 placeholder="••••••••"
                 placeholderTextColor="#576580"
-                secureTextEntry={showPin}
+                secureTextEntry={!showPin}
                 style={styles.input}
+                value={password}
               />
               <Pressable
+                disabled={submitting}
                 hitSlop={8}
                 onPress={() => setShowPin((value) => !value)}
                 style={styles.trailingAction}
@@ -91,16 +172,69 @@ export default function SignInScreen() {
             </View>
           </View>
 
-          <Pressable style={styles.primaryAction}>
-            <Text style={styles.primaryActionText}>AUTHENTICATE</Text>
-            <MaterialCommunityIcons
-              color="#103F40"
-              name="arrow-right"
-              size={28}
-            />
+          {errorMessage ? (
+            <View style={styles.errorBanner}>
+              <MaterialCommunityIcons
+                color="#FFB4B4"
+                name="alert-circle-outline"
+                size={18}
+              />
+              <Text style={styles.errorText}>{errorMessage}</Text>
+            </View>
+          ) : null}
+
+          {infoMessage ? (
+            <View style={styles.infoBanner}>
+              <MaterialCommunityIcons
+                color="#A9F6D5"
+                name="information-outline"
+                size={18}
+              />
+              <Text style={styles.infoText}>{infoMessage}</Text>
+            </View>
+          ) : null}
+
+          <Pressable
+            disabled={submitting}
+            onPress={() => {
+              void handleSignIn();
+            }}
+            style={[
+              styles.primaryAction,
+              submitting && styles.primaryActionDisabled,
+            ]}
+          >
+            {submitting ? (
+              <>
+                <ActivityIndicator color="#103F40" />
+                <Text style={styles.primaryActionText}>AUTHENTICATING</Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.primaryActionText}>AUTHENTICATE</Text>
+                <MaterialCommunityIcons
+                  color="#103F40"
+                  name="arrow-right"
+                  size={28}
+                />
+              </>
+            )}
           </Pressable>
 
-          <View style={styles.utilityRow}>
+          <Pressable
+            disabled={submitting}
+            onPress={() => {
+              void handleSignUp();
+            }}
+            style={[
+              styles.secondaryAction,
+              submitting && styles.primaryActionDisabled,
+            ]}
+          >
+            <Text style={styles.secondaryActionText}>CREATE ACCOUNT</Text>
+          </Pressable>
+
+          {/* <View style={styles.utilityRow}>
             <Pressable
               onPress={() => setPersistSession((value) => !value)}
               style={styles.persistToggle}
@@ -121,9 +255,19 @@ export default function SignInScreen() {
               </View>
               <Text style={styles.persistLabel}>MAINTAIN PERSISTENCE</Text>
             </Pressable>
-          </View>
+          </View> */}
 
           <View style={styles.divider} />
+
+          <Pressable
+            disabled={submitting}
+            onPress={continueWithoutAccount}
+            style={styles.guestAction}
+          >
+            <Text style={styles.guestActionText}>
+              CONTINUE WITHOUT AN ACCOUNT
+            </Text>
+          </Pressable>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -254,13 +398,68 @@ const styles = StyleSheet.create({
     marginTop: 8,
     minHeight: 108,
   },
+  primaryActionDisabled: {
+    opacity: 0.7,
+  },
   primaryActionText: {
     color: "#103F40",
     fontFamily: Fonts.mono,
     fontSize: 22,
     fontWeight: "800",
     letterSpacing: 2.6,
-    marginRight: 12,
+    marginLeft: 12,
+  },
+  errorBanner: {
+    alignItems: "center",
+    backgroundColor: "rgba(122, 30, 45, 0.32)",
+    borderColor: "rgba(255, 122, 122, 0.45)",
+    borderRadius: 4,
+    borderWidth: 1,
+    flexDirection: "row",
+    marginTop: 4,
+    marginBottom: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  errorText: {
+    color: "#FFD3D3",
+    flex: 1,
+    fontSize: 14,
+    marginLeft: 10,
+  },
+  infoBanner: {
+    alignItems: "center",
+    backgroundColor: "rgba(90, 170, 135, 0.12)",
+    borderColor: "rgba(169, 246, 213, 0.3)",
+    borderRadius: 4,
+    borderWidth: 1,
+    flexDirection: "row",
+    marginTop: 4,
+    marginBottom: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  infoText: {
+    color: "#D9FFF0",
+    flex: 1,
+    fontSize: 14,
+    marginLeft: 10,
+  },
+  secondaryAction: {
+    alignItems: "center",
+    borderColor: "#2C466E",
+    borderRadius: 4,
+    borderWidth: 1,
+    justifyContent: "center",
+    marginTop: 14,
+    minHeight: 64,
+  },
+  secondaryActionText: {
+    color: "#BCD2F5",
+    fontFamily: Fonts.mono,
+    fontSize: 16,
+    fontWeight: "700",
+    letterSpacing: 1.8,
   },
   utilityRow: {
     alignItems: "center",
@@ -302,6 +501,18 @@ const styles = StyleSheet.create({
     height: 1,
     marginTop: 28,
     marginBottom: 28,
+  },
+  guestAction: {
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 52,
+  },
+  guestActionText: {
+    color: "#8EB7F0",
+    fontFamily: Fonts.mono,
+    fontSize: 14,
+    fontWeight: "700",
+    letterSpacing: 1.6,
   },
   statusRow: {
     alignItems: "center",

@@ -28,15 +28,21 @@ export default function TabLayout() {
       }}
     >
       <Tabs.Screen
+        name="index"
+        options={{
+          title: "Test",
+        }}
+      />
+      <Tabs.Screen
         name="scanner"
         options={{
           title: "Bluetooth",
         }}
       />
       <Tabs.Screen
-        name="../(auth)/signin"
+        name="test"
         options={{
-          title: "Sign In",
+          href: null,
         }}
       />
     </Tabs>

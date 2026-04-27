@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -10,7 +10,6 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useBLE } from "@/context/BLEContext";
-import { getSignalQuality } from "@/utils/bleHelpers";
 import { formatRSSI } from "@/utils/formatting";
 
 export default function ScannerScreen() {
@@ -19,12 +18,12 @@ export default function ScannerScreen() {
     connect,
     connectedDevice,
     connectionState,
+    disconnect,
     devices,
     error,
     permissionState,
     prepareBluetooth,
     receivedData,
-    requestPermissions,
     scanState,
     startScan,
     stopScan,
@@ -33,6 +32,15 @@ export default function ScannerScreen() {
   const isBluetoothOn = bluetoothState === "on";
   const primaryActionLabel =
     scanState === "scanning" ? "Stop Scan" : "Scan for Devices";
+  const isConnecting = connectionState === "connecting";
+  const visibleDevices = useMemo(
+    () =>
+      devices.filter((device) => {
+        const hasName = Boolean(device.name?.trim());
+        return hasName && device.rssi >= -60;
+      }),
+    [devices],
+  );
 
   const handlePrimaryAction = async () => {
     if (scanState === "scanning") {
@@ -43,10 +51,23 @@ export default function ScannerScreen() {
     await startScan();
   };
 
+  const handleDevicePress = async (deviceId: string) => {
+    if (deviceId === connectedDevice?.id) {
+      await disconnect();
+      return;
+    }
+
+    if (isConnecting) {
+      return;
+    }
+
+    await connect(deviceId);
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
-        <Text style={styles.eyebrow}>Clinical Kinetics</Text>
+        <Text style={styles.eyebrow}>AeroSense</Text>
         <Text style={styles.title}>Bluetooth Pairing</Text>
         <Text style={styles.subtitle}>
           Allow Bluetooth access, turn Bluetooth on, then tap a nearby device to
@@ -93,29 +114,29 @@ export default function ScannerScreen() {
           <View style={styles.connectedCard}>
             <View style={styles.connectedHeader}>
               <Text style={styles.sectionTitle}>Connected Device</Text>
-              <View style={styles.connectedBadge}>
-                <Text style={styles.connectedBadgeText}>
-                  {connectionState === "connected" ? "Connected" : "Connecting"}
-                </Text>
-              </View>
             </View>
             <Text style={styles.connectedName}>{connectedDevice.name}</Text>
             <Text style={styles.connectedMeta}>
               {connectedDevice.id} {"\u2022"} {formatRSSI(connectedDevice.rssi)}
             </Text>
-            <Text style={styles.connectedHint}>
+            {/* <Text style={styles.connectedHint}>
               Latest packets: {receivedData.length}
-            </Text>
+            </Text> */}
+            <Pressable onPress={disconnect} style={styles.disconnectButton}>
+              <Text style={styles.disconnectButtonText}>Disconnect Device</Text>
+            </Pressable>
           </View>
         )}
 
         <View style={styles.listHeader}>
           <Text style={styles.sectionTitle}>Found Devices</Text>
-          <Text style={styles.sectionCount}>{devices.length} results</Text>
+          <Text style={styles.sectionCount}>
+            {visibleDevices.length} results
+          </Text>
         </View>
 
         <FlatList
-          data={devices}
+          data={visibleDevices}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
           ListEmptyComponent={
@@ -123,42 +144,49 @@ export default function ScannerScreen() {
               <Text style={styles.emptyTitle}>No devices yet</Text>
               <Text style={styles.emptyText}>
                 Start a scan after granting permissions and turning Bluetooth
-                on.
+                on. Only nearby named devices with RSSI of at least -60 dBm are
+                shown.
               </Text>
             </View>
           }
           renderItem={({ item }) => {
-            const quality = getSignalQuality(item.rssi);
+            const isActiveDevice = item.id === connectedDevice?.id;
+            const showConnectingState =
+              isConnecting && item.id === connectedDevice?.id;
 
             return (
               <Pressable
-                style={styles.deviceCard}
-                onPress={() => connect(item.id)}
+                style={[
+                  styles.deviceCard,
+                  isActiveDevice && styles.connectedDeviceCard,
+                  isConnecting && !isActiveDevice && styles.disabledDeviceCard,
+                ]}
+                onPress={() => handleDevicePress(item.id)}
               >
                 <View style={styles.deviceCopy}>
-                  <Text style={styles.deviceName}>
+                  <Text
+                    style={[
+                      styles.deviceName,
+                      isActiveDevice && styles.connectedDeviceName,
+                    ]}
+                  >
                     {item.name || "Unknown Device"}
                   </Text>
                   <Text style={styles.deviceId}>{item.id}</Text>
-                  <Text style={styles.deviceState}>
-                    {item.isConnected
-                      ? "Connected"
-                      : item.isBonded
-                        ? "Paired"
-                        : "Tap to pair"}
+                  <Text
+                    style={[
+                      styles.deviceState,
+                      isActiveDevice && styles.connectedDeviceState,
+                    ]}
+                  >
+                    {showConnectingState
+                      ? "Connecting..."
+                      : isActiveDevice
+                        ? "Connected • tap to disconnect"
+                        : item.isBonded
+                          ? "Paired • tap to connect"
+                          : "Tap to pair"}
                   </Text>
-                </View>
-
-                <View style={styles.signalWrap}>
-                  <View style={styles.signalTrack}>
-                    <View
-                      style={[
-                        styles.signalFill,
-                        { width: `${Math.max(16, quality)}%` },
-                      ]}
-                    />
-                  </View>
-                  <Text style={styles.signalText}>{formatRSSI(item.rssi)}</Text>
                 </View>
               </Pressable>
             );
@@ -314,7 +342,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   connectedMeta: {
-    color: "#A8B6CC",
+    color: "#8194B4",
     fontSize: 13,
     marginBottom: 8,
   },
@@ -322,6 +350,22 @@ const styles = StyleSheet.create({
     color: "#59D8FF",
     fontSize: 13,
     fontWeight: "600",
+    marginBottom: 14,
+  },
+  disconnectButton: {
+    alignSelf: "flex-start",
+    backgroundColor: "#18314E",
+    borderColor: "#2E537E",
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  disconnectButtonText: {
+    color: "#D9E4F7",
+    fontSize: 13,
+    fontWeight: "800",
+    textTransform: "uppercase",
   },
   listHeader: {
     alignItems: "center",
@@ -373,6 +417,14 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     padding: 16,
   },
+  connectedDeviceCard: {
+    backgroundColor: "#162334",
+    borderColor: "#47617E",
+    opacity: 0.72,
+  },
+  disabledDeviceCard: {
+    opacity: 0.5,
+  },
   deviceCopy: {
     flex: 1,
     marginRight: 16,
@@ -382,6 +434,9 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "800",
     marginBottom: 4,
+  },
+  connectedDeviceName: {
+    color: "#C8D3E6",
   },
   deviceId: {
     color: "#8194B4",
@@ -394,6 +449,9 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: 0.4,
     textTransform: "uppercase",
+  },
+  connectedDeviceState: {
+    color: "#B7C6DA",
   },
   signalWrap: {
     alignItems: "flex-end",
