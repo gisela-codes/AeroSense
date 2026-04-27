@@ -22,7 +22,9 @@ export default function RootLayout() {
   return (
     <AuthProvider>
       <BLEProvider>
-        <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
+        <ThemeProvider
+          value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
+        >
           <RootNavigator />
           <StatusBar style="auto" />
         </ThemeProvider>

@@ -4,10 +4,34 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useBLE } from "@/context/BLEContext";
+import type { SensorPacket } from "@/types/ble";
+
+const hasValidSensorPacket = (packet: SensorPacket | null | undefined) => {
+  if (!packet) {
+    return false;
+  }
+
+  return [
+    packet.seq,
+    packet.air,
+    packet.ax,
+    packet.ay,
+    packet.az,
+    packet.gx,
+    packet.gy,
+    packet.gz,
+  ].every((value) => Number.isFinite(value));
+};
 
 export default function IndexScreen() {
-  const { connectedDevice, connectionState } = useBLE();
+  const { connectedDevice, connectionState, receivedData } = useBLE();
   const router = useRouter();
+  const latestPacket = receivedData[0];
+  const hasValidSensorData = hasValidSensorPacket(latestPacket);
+  const canStartTest =
+    Boolean(connectedDevice) &&
+    connectionState === "connected" &&
+    hasValidSensorData;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -21,18 +45,26 @@ export default function IndexScreen() {
         <View style={styles.heroCard}>
           <Text style={styles.heroLabel}>Session Status</Text>
           <Text style={styles.heroValue}>
-            {connectedDevice
-              ? "Device ready for testing"
-              : "Waiting for device"}
+            {!connectedDevice
+              ? "Waiting for device"
+              : hasValidSensorData
+                ? "Device ready for testing"
+                : "Checking sensor data"}
           </Text>
           <Text style={styles.heroHint}>
             {connectedDevice
-              ? `${connectedDevice.name} • ${connectionState}`
+              ? hasValidSensorData
+                ? `${connectedDevice.name} • ${connectionState}`
+                : `${connectedDevice.name} • ${connectionState} • waiting for valid sensor packets`
               : "Connect a nearby sensor from the Bluetooth tab before starting."}
           </Text>
 
           <Pressable
-            style={styles.primaryButton}
+            disabled={!canStartTest}
+            style={[
+              styles.primaryButton,
+              !canStartTest && styles.primaryButtonDisabled,
+            ]}
             onPress={() =>
               router.push({
                 pathname: "/(tabs)/test",
@@ -41,6 +73,13 @@ export default function IndexScreen() {
             }
           >
             <Text style={styles.primaryButtonText}>Start Test</Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.secondaryButton}
+            onPress={() => router.push("/(tabs)/history")}
+          >
+            <Text style={styles.secondaryButtonText}>Open History</Text>
           </Pressable>
         </View>
 
@@ -118,7 +157,11 @@ const styles = StyleSheet.create({
   primaryButton: {
     backgroundColor: "#8FF5CF",
     borderRadius: 14,
+    marginBottom: 12,
     paddingVertical: 16,
+  },
+  primaryButtonDisabled: {
+    opacity: 0.45,
   },
   primaryButtonText: {
     color: "#072033",
@@ -126,6 +169,18 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     textAlign: "center",
     textTransform: "uppercase",
+  },
+  secondaryButton: {
+    alignItems: "center",
+    borderColor: "#294066",
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingVertical: 14,
+  },
+  secondaryButtonText: {
+    color: "#D9E4F7",
+    fontSize: 14,
+    fontWeight: "700",
   },
   infoCard: {
     backgroundColor: "#0E1A30",

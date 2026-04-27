@@ -35,6 +35,21 @@ export interface BLECharacteristicProperties {
   Broadcast: boolean;
 }
 
-export type BLEScanState = 'idle' | 'scanning' | 'stopped' | 'error';
-export type BLEConnectionState = 'disconnected' | 'connecting' | 'connected' | 'error';
-export type BluetoothPermissionState = 'unknown' | 'granted' | 'denied';
+export interface SensorPacket {
+  seq: number;
+  air: number;
+  ax: number;
+  ay: number;
+  az: number;
+  gx: number;
+  gy: number;
+  gz: number;
+}
+
+export type BLEScanState = "idle" | "scanning" | "stopped" | "error";
+export type BLEConnectionState =
+  | "disconnected"
+  | "connecting"
+  | "connected"
+  | "error";
+export type BluetoothPermissionState = "unknown" | "granted" | "denied";
